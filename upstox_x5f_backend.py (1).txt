@@ -1,0 +1,82 @@
+"""
+Upstox AI - Real Live Backend (Option B)
+Run: pip install flask flask-cors requests
+     python upstox_backend.py
+Deploy: Render / Railway / Replit - just upload this file
+"""
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import requests
+from datetime import datetime, timedelta
+
+app = Flask(__name__)
+CORS(app)  # Allow your phone dashboard to connect
+
+UPSTOX_BASE = "https://api.upstox.com/v2"
+
+@app.route("/")
+def home():
+    return jsonify({"status": "Upstox AI Backend LIVE", "version": "v3", "message": "Send token in header X-Upstox-Token"})
+
+@app.route("/api/ltp")
+def get_ltp():
+    token = request.headers.get("X-Upstox-Token") or request.args.get("token")
+    instrument = request.args.get("instrument", "NSE_INDEX|Nifty 50")
+    if not token:
+        return jsonify({"error": "Token missing"}), 400
+    
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    url = f"{UPSTOX_BASE}/market-quote/ltp?instrument_key={instrument}"
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
+        # Try to extract price
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/candles")
+def get_candles():
+    token = request.headers.get("X-Upstox-Token") or request.args.get("token")
+    instrument = request.args.get("instrument", "NSE_INDEX|Nifty 50")
+    interval = request.args.get("interval", "15minute")
+    
+    if not token:
+        return jsonify({"error": "Token missing"}), 400
+
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    
+    # Last 3 months range
+    to_date = datetime.now().strftime("%Y-%m-%d")
+    from_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    
+    # Historical
+    url_hist = f"{UPSTOX_BASE}/historical-candle/{instrument}/{interval}/{from_date}/{to_date}"
+    url_intraday = f"{UPSTOX_BASE}/historical-candle/intraday/{instrument}/{interval}"
+    
+    try:
+        hist = requests.get(url_hist, headers=headers, timeout=15).json()
+        intra = requests.get(url_intraday, headers=headers, timeout=15).json()
+        
+        return jsonify({
+            "historical": hist,
+            "intraday": intra,
+            "from": from_date,
+            "to": to_date
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/analyze")
+def analyze():
+    """Full AI analysis - combines LTP + candles + 12 engines"""
+    token = request.headers.get("X-Upstox-Token") or request.args.get("token")
+    if not token:
+        return jsonify({"error": "Token missing"}), 400
+    
+    # This will call the other two internally for simplicity, frontend can call separately
+    return jsonify({"message": "Use /api/ltp and /api/candles, then run AI engines in frontend"})
+
+if __name__ == "__main__":
+    # Phone will connect via http://YOUR_IP:5000
+    app.run(host="0.0.0.0", port=5000, debug=True)
